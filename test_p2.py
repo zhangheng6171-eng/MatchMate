@@ -196,10 +196,10 @@ class TestImageService(unittest.TestCase):
         self.assertIsInstance(result, bytes)
 
     def test_extract_filename_from_url_valid(self):
-        """从 URL 提取文件名"""
+        """从 URL 提取完整文件路径（含 user_id 前缀）"""
         url = "https://example.com/storage/v1/object/public/avatars/u1/abc123.jpg"
         fname = extract_filename_from_url(url)
-        self.assertEqual(fname, "abc123.jpg")
+        self.assertEqual(fname, "u1/abc123.jpg")
 
     def test_extract_filename_from_url_none(self):
         """空 URL 返回 None"""

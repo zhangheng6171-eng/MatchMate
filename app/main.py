@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 from app.api.auth import router as auth_router
 from app.api.profile import router as profile_router
 from app.api.match import router as match_router
+from app.api.messages import router as messages_router
+from app.api.conversations import router as conversations_router
 
 
 # ---- FastAPI 应用 ----
@@ -60,6 +62,8 @@ async def catch_db_errors(request, exc):
 # ---- 注册路由 ----
 app.include_router(auth_router)
 app.include_router(profile_router)
+app.include_router(messages_router)
+app.include_router(conversations_router)
 app.include_router(match_router)
 
 # ---- 兼容性 & 距离计算（通用领域服务） ----
