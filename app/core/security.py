@@ -93,11 +93,12 @@ def decode_token(token: str) -> dict[str, Any]:
         raise ValueError(f"Token 验证失败: {e}")
 
 
-def create_tokens(user_id: str) -> dict[str, str]:
-    """一次性签发 access + refresh 双令牌"""
-    payload = {"sub": user_id}
+def create_tokens(user_id: str, token_version: int = 1) -> dict[str, str]:
+    """一次性签发 access + refresh 双令牌，refresh 含版本号用于注销控制"""
+    access_payload = {"sub": user_id}
+    refresh_payload = {"sub": user_id, "ver": token_version}
     return {
-        "access_token": create_access_token(payload),
-        "refresh_token": create_refresh_token(payload),
+        "access_token": create_access_token(access_payload),
+        "refresh_token": create_refresh_token(refresh_payload),
         "token_type": "bearer",
     }
