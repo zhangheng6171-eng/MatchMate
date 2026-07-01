@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 10
     AVATAR_MAX_SIZE_KB: int = 500
 
+    # ---- 分页 ----
+    PAGE_SIZE_DEFAULT: int = 20
+    MAX_PAGE_SIZE: int = 100
+
+    # ---- 运行环境 ----
+    ENVIRONMENT: str = "development"
+
     # ---- CORS ----
     CORS_ORIGINS: list[str] = ["*"]
 

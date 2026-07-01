@@ -7,12 +7,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.core.config import settings
+from app.core.security import decode_token
 from app.domain.services.haversine import haversine
 from app.domain.services.compatibility import calculate_compatibility, get_shared_tags
 
@@ -92,34 +93,64 @@ async def calc_compatibility(user1: dict, user2: dict):
     }
 
 
-@app.get("/api/deck/sample")
-async def get_sample_deck():
-    """返回示例推荐列表（Demo 用，后续接入数据库）"""
-    return {
-        "candidates": [
-            {
-                "id": "u1", "name": "Alice", "age": 26,
-                "compatibility": 85, "distance_km": 3.2,
-                "bio": "热爱旅行和摄影，周末喜欢探索城市角落",
-                "interests": ["旅行", "摄影", "咖啡", "瑜伽"],
-                "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400"
-            },
-            {
-                "id": "u2", "name": "Bob", "age": 28,
-                "compatibility": 72, "distance_km": 5.1,
-                "bio": "程序员一枚，平时喜欢打篮球和看电影",
-                "interests": ["编程", "篮球", "电影", "音乐"],
-                "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400"
-            },
-            {
-                "id": "u3", "name": "Cathy", "age": 25,
-                "compatibility": 91, "distance_km": 1.8,
-                "bio": "爱猫人士，周末喜欢去书店和公园",
-                "interests": ["阅读", "猫", "徒步", "烘焙"],
-                "avatar": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400"
-            },
-        ]
-    }
+@app.get("/api/deck/explore")
+async def explore_deck(authorization: str | None = Header(None)):
+    """推荐列表 — 基于真实 profiles 表查询，排除当前用户及已滑过的用户"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="请先登录")
+
+    token = authorization.split(" ", 1)[1]
+    try:
+        payload = decode_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="登录凭证无效或已过期")
+
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="请使用登录凭证")
+
+    user_id = payload.get("sub")
+    from app.core.supabase_client import supabase
+
+    # 获取已滑过的用户ID
+    or_filter = f"(user1_id.eq.{user_id},user2_id.eq.{user_id})"
+    swiped_records = await supabase.select(
+        "matches",
+        columns="user1_id,user2_id",
+        extra_params={"or": or_filter},
+    )
+    swiped_ids = set()
+    for m in (swiped_records or []):
+        swiped_ids.add(m["user2_id"] if m["user1_id"] == user_id else m["user1_id"])
+
+    # 查询所有用户的 profile（排除自己和已滑过的）
+    all_profiles = await supabase.select(
+        "profiles",
+        columns="user_id,nickname,age,bio,avatar_url,city,latitude,longitude,interests,gender",
+        order="created_at.desc",
+        limit=30,
+    )
+
+    candidates = []
+    for p in (all_profiles or []):
+        pid = p.get("user_id")
+        if pid == user_id or pid in swiped_ids:
+            continue
+        if not p.get("nickname"):
+            continue
+
+        item = {
+            "user_id": pid,
+            "name": p.get("nickname", ""),
+            "age": p.get("age"),
+            "bio": p.get("bio", ""),
+            "city": p.get("city", ""),
+            "avatar": p.get("avatar_url", ""),
+            "interests": p.get("interests") or [],
+            "gender": p.get("gender", ""),
+        }
+        candidates.append(item)
+
+    return {"candidates": candidates, "count": len(candidates)}
 
 
 # ---- 静态文件（前端） ----

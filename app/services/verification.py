@@ -70,15 +70,31 @@ async def send_verification_code(target: str, channel: str, purpose: str) -> str
         "expires_at": expires_at.isoformat(),
     })
 
-    # [开发期] Console 模拟发送
-    channel_label = "短信" if channel == "sms" else "邮件"
-    purpose_label = {"register": "注册", "login": "登录", "reset_password": "重置密码", "activate_email": "激活邮箱"}.get(purpose, purpose)
-    print(f"\n{'='*50}")
-    print(f"  [{channel_label}] 验证码已发送到: {target}")
-    print(f"  用途: {purpose_label}")
-    print(f"  验证码: {code}")
-    print(f"  有效期: {CODE_EXPIRE_MINUTES} 分钟")
-    print(f"{'='*50}\n")
+    # 环境自适应发送
+    from app.core.config import settings
+
+    if settings.ENVIRONMENT == "development":
+        # 开发期：验证码通过 Console 打印
+        print(f"\n{'='*50}")
+        channel_label = "📧 邮箱" if channel == "email" else "📱 短信"
+        print(f"[开发期] Console 模拟发送")
+        print(f"  渠道: {channel_label}")
+        print(f"  目标: {target}")
+        print(f"  用途: {purpose}")
+        print(f"  验证码: {code}")
+        print(f"  有效期: {CODE_EXPIRE_MINUTES} 分钟")
+        print(f"{'='*50}\n")
+    elif settings.ENVIRONMENT == "production":
+        # 生产模式：Mock Provider — 流程链路打通，暂不接入真实短信/邮件服务
+        # TODO: 接入真实 SMS/Email Provider 时替换此处的 API 调用
+        import logging
+        logger = logging.getLogger("verification")
+        logger.info(
+            f"[生产Mock] 验证码 {code} → {channel}:{target} (用途:{purpose}, 有效期:{CODE_EXPIRE_MINUTES}分钟)"
+        )
+    else:
+        # 未知环境，fallback 到 Console
+        print(f"\n[未知环境:{settings.ENVIRONMENT}] 验证码: {code} → {channel}:{target} (用途:{purpose})\n")
 
     return code
 
