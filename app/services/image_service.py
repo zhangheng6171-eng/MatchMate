@@ -108,9 +108,19 @@ async def delete_from_storage(bucket: str, filename: str):
 
 
 def extract_filename_from_url(url: str) -> str | None:
-    """从 Supabase Storage URL 中提取文件名"""
+    """从 Supabase Storage URL 中提取完整文件路径（含 user_id 前缀）"""
     if not url:
         return None
-    # URL 格式: https://.../storage/v1/object/public/{bucket}/{filename}
-    parts = url.rsplit("/", 1)
-    return parts[-1] if len(parts) > 1 else None
+    # URL 格式: https://.../storage/v1/object/public/{bucket}/{user_id}/{filename}
+    # 提取 /object/public/{bucket}/ 之后的部分
+    marker = "/object/public/"
+    idx = url.find(marker)
+    if idx == -1:
+        # fallback: 取最后一段
+        return url.rsplit("/", 1)[-1] if "/" in url else url
+    # 跳过 marker + bucket name + "/"
+    after_marker = url[idx + len(marker):]
+    parts = after_marker.split("/", 1)
+    if len(parts) < 2:
+        return None
+    return parts[1]  # {user_id}/{filename}

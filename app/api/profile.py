@@ -235,10 +235,18 @@ async def upload_avatar(
     avatar_url = await upload_to_storage(BUCKET_AVATARS, compressed, filename)
 
     # 更新数据库中的头像 URL
-    await _get_or_create_profile(current_user["id"])
+    profile = await _get_or_create_profile(current_user["id"])
+    # 判断资料完整度：昵称 + 头像 + 性别
+    has_nickname = bool(profile.get("nickname"))
+    has_gender = bool(profile.get("gender"))
+    profile_complete = has_nickname and has_gender  # avatar刚上传，肯定有
     await supabase.update(
         "profiles",
-        {"avatar_url": avatar_url, "updated_at": datetime.now(timezone.utc).isoformat()},
+        {
+            "avatar_url": avatar_url,
+            "profile_complete": profile_complete,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
         {"user_id": current_user["id"]},
     )
     await _log_operation(current_user["id"], "upload_avatar")
@@ -263,7 +271,7 @@ async def delete_avatar(current_user: dict = Depends(get_current_user_supabase))
                 await delete_from_storage(BUCKET_AVATARS, fname)
         await supabase.update(
             "profiles",
-            {"avatar_url": None, "updated_at": datetime.now(timezone.utc).isoformat()},
+            {"avatar_url": None, "profile_complete": False, "updated_at": datetime.now(timezone.utc).isoformat()},
             {"user_id": current_user["id"]},
         )
         await _log_operation(current_user["id"], "delete_avatar")

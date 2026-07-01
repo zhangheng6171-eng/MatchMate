@@ -43,7 +43,7 @@ async def send_verification_code(target: str, channel: str, purpose: str) -> str
     # 检查冷却时间
     recent = await supabase.select(
         "verification_codes",
-        filters={"target": f"eq.{target}"},
+        filters={"target": target},
         order="created_at.desc",
         limit=1,
     )
@@ -97,7 +97,7 @@ async def verify_code(target: str, code: str, purpose: str) -> bool:
     """
     records = await supabase.select(
         "verification_codes",
-        filters={"target": f"eq.{target}", "purpose": f"eq.{purpose}"},
+        filters={"target": target, "purpose": purpose},
         order="created_at.desc",
         limit=3,
     )
