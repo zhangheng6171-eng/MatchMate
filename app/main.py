@@ -8,17 +8,31 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import logging
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.core.security import decode_token
 from app.domain.services.haversine import haversine
 from app.domain.services.compatibility import calculate_compatibility, get_shared_tags
 
 logger = logging.getLogger(__name__)
+
+# ---- P0.6: Sentry 错误监控 ----
+if os.getenv("SENTRY_DSN"):
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN"),
+        environment=settings.ENVIRONMENT,
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
+    logger.info("Sentry initialized")
 
 # ---- API 路由 ----
 from app.api.auth import router as auth_router
@@ -38,6 +52,10 @@ app = FastAPI(
     version=settings.APP_VERSION,
 )
 
+# ---- P0.6: 注册 Rate Limiter ----
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -48,7 +66,6 @@ app.add_middleware(
 # ---- 数据库不可用时的异常处理 ----
 @app.exception_handler(Exception)
 async def catch_db_errors(request, exc):
-    """捕获数据库连接等基础设施异常，返回友好错误"""
     error_msg = str(exc)
     if "connect" in error_msg.lower() or "not found" in error_msg.lower():
         return JSONResponse(
@@ -84,14 +101,12 @@ async def health_check():
 
 @app.get("/api/distance")
 async def calc_distance(lat1: float, lon1: float, lat2: float, lon2: float):
-    """计算两地之间的地表距离"""
     km = haversine(lat1, lon1, lat2, lon2)
     return {"distance_km": round(km, 2), "unit": "km"}
 
 
 @app.post("/api/compatibility")
 async def calc_compatibility(user1: dict, user2: dict):
-    """计算两个用户的兼容性评分（0-100）"""
     score = calculate_compatibility(user1, user2)
     tags = get_shared_tags(user1, user2)
     return {
@@ -102,8 +117,8 @@ async def calc_compatibility(user1: dict, user2: dict):
 
 
 @app.get("/api/deck/explore")
-async def explore_deck(authorization: str | None = Header(None)):
-    """推荐列表 — 基于真实 profiles 表查询，排除当前用户及已滑过的用户"""
+@limiter.limit("60/minute")  # P0.6: 推荐列表限流
+async def explore_deck(request: Request, authorization: str | None = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="请先登录")
 
@@ -119,7 +134,6 @@ async def explore_deck(authorization: str | None = Header(None)):
     user_id = payload.get("sub")
     from app.core.supabase_client import supabase
 
-    # 获取已滑过的用户ID
     or_filter = f"(user1_id.eq.{user_id},user2_id.eq.{user_id})"
     swiped_records = await supabase.select(
         "matches",
@@ -130,7 +144,6 @@ async def explore_deck(authorization: str | None = Header(None)):
     for m in (swiped_records or []):
         swiped_ids.add(m["user2_id"] if m["user1_id"] == user_id else m["user1_id"])
 
-    # 查询所有用户的 profile（排除自己和已滑过的）
     all_profiles = await supabase.select(
         "profiles",
         columns="user_id,nickname,age,bio,avatar_url,city,latitude,longitude,interests,gender",
