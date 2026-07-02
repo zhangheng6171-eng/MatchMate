@@ -6,6 +6,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,9 +70,16 @@ app.include_router(match_router)
 
 # ---- 兼容性 & 距离计算（通用领域服务） ----
 
+BUILD_TIMESTAMP = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "version": settings.APP_VERSION, "database": "supabase"}
+    return {
+        "status": "ok",
+        "version": settings.APP_VERSION,
+        "database": "supabase",
+        "build_time": BUILD_TIMESTAMP,
+    }
 
 
 @app.get("/api/distance")
