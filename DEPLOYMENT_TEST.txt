@@ -1,0 +1,3 @@
+Deployment verification timestamp: 2026-07-02 19:21:34 +08:00
+Commit hash: c5fd2f9eba89ea0e03cbe3fd394e01ca0d0e198e
+Purpose: Verify GitHub -> Vercel auto-deploy pipeline
